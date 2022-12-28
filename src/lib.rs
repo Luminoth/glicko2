@@ -293,48 +293,50 @@ impl PlayerSkill {
 
 #[cfg(test)]
 mod tests {
+    use assert_approx_eq::assert_approx_eq;
+
     use super::*;
 
     #[test]
     fn rating_conversion() {
         let player = PlayerSkill::new(1500.0, 200.0, 0.06);
-        assert_eq!(player.glicko2_rating(), 0.0);
+        assert_approx_eq!(player.glicko2_rating(), 0.0);
 
         let opponent = PlayerSkill::new_opponent(1400.0, 30.0);
-        assert_eq!(opponent.glicko2_rating(), -0.5756);
+        assert_approx_eq!(opponent.glicko2_rating(), -0.5756, 0.0001);
 
         let opponent = PlayerSkill::new_opponent(1550.0, 100.0);
-        assert_eq!(opponent.glicko2_rating(), 0.2878);
+        assert_approx_eq!(opponent.glicko2_rating(), 0.2878, 0.0001);
 
         let opponent = PlayerSkill::new_opponent(1700.0, 300.0);
-        assert_eq!(opponent.glicko2_rating(), 1.1513);
+        assert_approx_eq!(opponent.glicko2_rating(), 1.1513, 0.0001);
     }
 
     #[test]
     fn rating_deviation_conversion() {
         let player = PlayerSkill::new(1500.0, 200.0, 0.06);
-        assert_eq!(player.glicko2_rating_deviation(), 1.1513);
+        assert_approx_eq!(player.glicko2_rating_deviation(), 1.1513, 0.0001);
 
         let opponent = PlayerSkill::new_opponent(1400.0, 30.0);
-        assert_eq!(opponent.glicko2_rating_deviation(), 0.1727);
+        assert_approx_eq!(opponent.glicko2_rating_deviation(), 0.1727, 0.0001);
 
         let opponent = PlayerSkill::new_opponent(1550.0, 100.0);
-        assert_eq!(opponent.glicko2_rating_deviation(), 0.5756);
+        assert_approx_eq!(opponent.glicko2_rating_deviation(), 0.5756, 0.0001);
 
         let opponent = PlayerSkill::new_opponent(1700.0, 300.0);
-        assert_eq!(opponent.glicko2_rating_deviation(), 1.7269);
+        assert_approx_eq!(opponent.glicko2_rating_deviation(), 1.7269, 0.0001);
     }
 
     #[test]
     fn opponent_g() {
         let opponent = PlayerSkill::new_opponent(1400.0, 30.0);
-        assert_eq!(g(&opponent), 0.9955);
+        assert_approx_eq!(g(&opponent), 0.9955, 0.0001);
 
         let opponent = PlayerSkill::new_opponent(1550.0, 100.0);
-        assert_eq!(g(&opponent), 0.9531);
+        assert_approx_eq!(g(&opponent), 0.9531, 0.0001);
 
         let opponent = PlayerSkill::new_opponent(1700.0, 300.0);
-        assert_eq!(g(&opponent), 1.7242);
+        assert_approx_eq!(g(&opponent), 1.7242, 0.0001);
     }
 
     #[test]
@@ -343,13 +345,13 @@ mod tests {
         let player = PlayerSkill::new(1500.0, 200.0, 0.06);
 
         let opponent = PlayerSkill::new_opponent(1400.0, 30.0);
-        assert_eq!(E(&player, &opponent), 0.639);
+        assert_approx_eq!(E(&player, &opponent), 0.639, 0.0001);
 
         let opponent = PlayerSkill::new_opponent(1550.0, 100.0);
-        assert_eq!(E(&player, &opponent), 0.432);
+        assert_approx_eq!(E(&player, &opponent), 0.432, 0.0001);
 
         let opponent = PlayerSkill::new_opponent(1700.0, 300.0);
-        assert_eq!(E(&player, &opponent), 0.303);
+        assert_approx_eq!(E(&player, &opponent), 0.303, 0.0001);
     }
 
     #[test]
@@ -363,8 +365,8 @@ mod tests {
         ];
 
         let updated_skill = player.compute_updated_skill_unchecked(outcomes);
-        assert_eq!(updated_skill.rating(), 1464.06);
-        assert_eq!(updated_skill.rating_deviation(), 151.52);
-        assert_eq!(updated_skill.volatility(), 0.05999);
+        assert_approx_eq!(updated_skill.rating(), 1464.06, 0.0001);
+        assert_approx_eq!(updated_skill.rating_deviation(), 151.52, 0.0001);
+        assert_approx_eq!(updated_skill.volatility(), 0.05999, 0.0001);
     }
 }
