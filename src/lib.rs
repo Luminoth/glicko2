@@ -34,16 +34,20 @@ pub enum Glicko2Error {
 // TODO: this should be configurable, generally between 0.2 and 1.2
 pub const TAU: f64 = 0.5;
 
-/// Glicko unrated rating
+/// Glicko unrated rating (r)
+///
+/// 0.0 in Glicko2 (µ)
 pub const UNRATED_RATING: f64 = 1500.0;
 
-/// Glicko unrated rating deviation
+/// Glicko unrated rating deviation (RD)
+///
+/// 2.0-ish in Glicko2 (θ)
 pub const UNRATED_RATING_DEVIATION: f64 = 350.0;
 
-/// Glicko unrated volatility
+/// Glicko2 unrated volatility (σ)
 pub const UNRATED_VOLATILITY: f64 = 0.06;
 
-/// Glick to Glicko2 conversion scale
+/// Glicko to Glicko2 conversion scale
 pub const GLICKO2_SCALE: f64 = 173.7178;
 
 /// Convergence tolerance
@@ -67,40 +71,44 @@ pub fn glicko_to_glicko2(rating: f64, rating_deviation: f64) -> (f64, f64) {
     )
 }
 
+/// g(θ) = 1 / sqrt(1 + (3 * θ^2) / pi^2)
 fn g(skill: &PlayerSkill) -> f64 {
+    // TODO: should this be passed in instead of calculated each call?
     let rd2 = skill.glicko2_rating_deviation().powf(2.0);
 
-    1.0 / (1.0 + (3.0 * rd2 / PI2)).sqrt()
+    1.0 / (1.0 + (3.0 * rd2) / PI2).sqrt()
 }
 
+/// E(µ, µj, θj) = 1 / (1 + e^(-g(θj) * (µ - µj))
 #[allow(non_snake_case)]
 fn E(player: &PlayerSkill, opponent: &PlayerSkill) -> f64 {
     1.0 / (1.0 + f64::exp(-g(opponent) * (player.glicko2_rating() - opponent.glicko2_rating())))
 }
 
-fn f(player: &PlayerSkill, x: f64, v: f64, delta: f64) -> f64 {
-    let a = player.volatility().powf(2.0).ln();
+/// f(x) = (e^x * (Δ^2 - θ^2 - v - e^x) / (2 * (θ^2 + v + e^x)^2)) - ((x - a) / τ^2)
+/// a = ln(σ^2)
+fn f(x: f64, v: f64, d2: f64, rd2: f64, a: f64) -> f64 {
     let ex = f64::exp(x);
-    let d2 = delta.powf(2.0);
-    let rd2 = player.glicko2_rating_deviation().powf(2.0);
+    let t2 = TAU * TAU;
 
-    ((ex * (d2 - rd2 - v - ex)) / (2.0 * (rd2 + v + ex).powf(2.0))) - ((x - a) / (TAU * TAU))
+    (ex * (d2 - rd2 - v - ex) / (2.0 * (rd2 + v + ex).powf(2.0))) - ((x - a) / t2)
 }
 
 #[allow(non_snake_case)]
 fn updated_volatility(player: &PlayerSkill, v: f64, delta: f64) -> f64 {
     let d2 = delta.powf(2.0);
     let rd2 = player.glicko2_rating_deviation().powf(2.0);
+    let vol = player.volatility().powf(2.0).ln();
 
-    let A = player.volatility().powf(2.0).ln();
+    let A = vol;
     let mut B = if d2 > (rd2 + v) {
         (d2 - rd2 - v).ln()
     } else {
-        // bracket ln(volatility^2)
+        // bracket a (ln(σ^2))
         // k should almost always be 1, very rarely 2 or more
         let mut k = 1;
         loop {
-            if f(player, A - k as f64 * TAU, v, delta) >= 0.0 {
+            if f(A - k as f64 * TAU, v, d2, rd2, vol) >= 0.0 {
                 break;
             }
             k += 1;
@@ -109,8 +117,8 @@ fn updated_volatility(player: &PlayerSkill, v: f64, delta: f64) -> f64 {
     };
     let mut A = A;
 
-    let mut fA = f(player, A, v, delta);
-    let mut fB = f(player, B, v, delta);
+    let mut fA = f(A, v, d2, rd2, vol);
+    let mut fB = f(B, v, d2, rd2, vol);
 
     // main Illinois algorithm iteration
     // find A such that f(A) = 0
@@ -121,7 +129,7 @@ fn updated_volatility(player: &PlayerSkill, v: f64, delta: f64) -> f64 {
         }
 
         let C = A + (A - B) * fA / (fB - fA);
-        let fC = f(player, C, v, delta);
+        let fC = f(C, v, d2, rd2, vol);
         if fC * fB <= 0.0 {
             A = B;
             fA = fB;
@@ -133,7 +141,7 @@ fn updated_volatility(player: &PlayerSkill, v: f64, delta: f64) -> f64 {
         fB = fC;
 
         iterations += 1;
-        if iterations == 20 {
+        if iterations >= 20 {
             warn!("exceeding max glicko2 iterations");
             // TODO: do we need to adjust anything to make sure the values are legit?
             break;
@@ -296,13 +304,17 @@ impl PlayerSkill {
             / outcomes
                 .iter()
                 .map(|(opponent, _)| {
-                    g(opponent).powf(2.0) * E(self, opponent) * (1.0 - E(self, opponent))
+                    let e = E(self, opponent);
+                    g(opponent).powf(2.0) * e * (1.0 - e)
                 })
                 .sum::<f64>();
 
         let delta = v * outcomes
             .iter()
-            .map(|(opponent, outcome)| g(opponent) * (outcome.score() - E(self, opponent)))
+            .map(|(opponent, outcome)| {
+                let e = E(self, opponent);
+                g(opponent) * (outcome.score() - e)
+            })
             .sum::<f64>();
 
         let volatility = updated_volatility(self, v, delta);
